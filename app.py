@@ -8,15 +8,24 @@ st.set_page_config(page_title="학생 관리 시스템", layout="wide")
 # 구글 시트 연결
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 데이터 불러오기 함수
+# 구글 시트 주소 (선생님의 시트 주소입니다)
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1N3lkoOiGgCwme1zHX9URJ-0MFYagjdV4RqnwokUr0v0"
+
+# 데이터 불러오기 함수 (주소를 직접 지정하도록 수정)
 def load_data():
-    students = conn.read(worksheet="students")
-    attendance = conn.read(worksheet="attendance")
+    # spreadsheet=SHEET_URL 를 추가하여 경로를 확실히 지정합니다.
+    students = conn.read(spreadsheet=SHEET_URL, worksheet="students")
+    attendance = conn.read(spreadsheet=SHEET_URL, worksheet="attendance")
     return students, attendance
 
-df_students, df_attendance = load_data()
+# 데이터 로드
+try:
+    df_students, df_attendance = load_data()
+except Exception as e:
+    st.error(f"데이터를 불러오는 중 오류가 발생했습니다. 시트 이름(students, attendance)이 정확한지 확인해주세요. 오류 내용: {e}")
+    st.stop()
 
-st.title("🏫 2026 학생회 관리 (구글 시트 연동)")
+st.title("🏫 2026 학생회 관리 (구글 연동 완료)")
 
 menu = st.sidebar.selectbox("메뉴", ["명단 검색", "출석 체크", "출결 현황"])
 
@@ -31,31 +40,8 @@ if menu == "명단 검색":
 
 elif menu == "출석 체크":
     st.header("✅ 일요 출석 체크")
-    classes = df_students['반이름'].unique().tolist()
-    sel_class = st.selectbox("반 선택", classes)
-    
-    # 이번주 일요일 계산
-    today = datetime.now()
-    sun = today + timedelta(days=(6 - today.weekday()))
-    check_date = st.date_input("날짜", sun)
-
-    class_sts = df_students[df_students['반이름'] == sel_class]
-    
-    with st.form("att_form"):
-        results = []
-        for _, row in class_sts.iterrows():
-            pres = st.checkbox(f"{row['이름']}", key=row['이름'])
-            results.append([str(check_date), row['이름'], sel_class, 1 if pres else 0])
-        
-        if st.form_submit_button("저장하기"):
-            # 구글 시트의 기존 데이터에 추가
-            new_data = pd.DataFrame(results, columns=['날짜', '이름', '반이름', '출석여부'])
-            updated_att = pd.concat([df_attendance, new_data], ignore_index=True)
-            conn.update(worksheet="attendance", data=updated_att)
-            st.success("구글 시트에 저장 완료!")
-
-elif menu == "출결 현황":
-    st.header("📊 통계")
-    if not df_attendance.empty:
-        st.write("최근 출석 기록")
-        st.dataframe(df_attendance.tail(20))
+    # '반이름' 컬럼이 있는지 확인 후 리스트 생성
+    if '반이름' in df_students.columns:
+        classes = df_students['반이름'].unique().tolist()
+        sel_class = st.selectbox("반 선택", classes)
+    else:

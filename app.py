@@ -30,7 +30,7 @@ except Exception as e:
 
 # --- 1. 출석 체크 화면 ---
 if menu == "출석 체크":
-    st.title("✅ 일요 출석 체크")
+    st.title("✅ 주일 예배 출석 체크")
     if '반이름' in df_students.columns:
         classes = df_students['반이름'].unique().tolist()
         sel_class = st.selectbox("반 선택", classes)
@@ -83,7 +83,7 @@ elif menu == "⚙️ 관리자 도구":
     # 간단한 비밀번호 확인 (예: 1234)
     password = st.text_input("관리자 비밀번호를 입력하세요", type="password")
     
-    if password == "1234": # <--- 원하는 비밀번호로 바꾸세요!
+    if password == "0498": # <--- 원하는 비밀번호로 바꾸세요!
         st.success("인증되었습니다. 아래 버튼을 사용하여 관리하세요.")
         
         col1, col2 = st.columns(2)

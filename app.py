@@ -24,7 +24,7 @@ except Exception as e:
     st.error(f"데이터 로딩 실패: {e}")
     st.stop()
 
-st.title("🏫 2026 학생회 관리 시스템")
+st.title("🏫 목포꿈의교회 학생회 관리 시스템")
 
 menu = st.sidebar.selectbox("메뉴", ["명단 검색", "출석 체크", "출결 현황"])
 

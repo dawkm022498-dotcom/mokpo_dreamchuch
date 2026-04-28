@@ -16,7 +16,6 @@ def load_data():
     df_a = conn.read(spreadsheet=SHEET_URL, worksheet="attendance", ttl=0)
     df_s.columns = [c.strip() for c in df_s.columns]
     df_a.columns = [c.strip() for c in df_a.columns]
-    
     if not df_a.empty:
         df_a['날짜'] = pd.to_datetime(df_a['날짜']).dt.date
     return df_s, df_a
@@ -47,94 +46,64 @@ if menu == "명단 검색":
     with col4:
         search_name = st.text_input("이름 검색", "")
 
-    filtered_df = df_students.copy()
-    if sel_school != "전체": filtered_df = filtered_df[filtered_df['학교'] == sel_school]
-    if sel_grade != "전체": filtered_df = filtered_df[filtered_df['학년'] == sel_grade]
-    if sel_class != "전체": filtered_df = filtered_df[filtered_df['반이름'] == sel_class]
-    if search_name: filtered_df = filtered_df[filtered_df['이름'].astype(str).str.contains(search_name, na=False)]
+    f_df = df_students.copy()
+    if sel_school != "전체": f_df = f_df[f_df['학교'] == sel_school]
+    if sel_grade != "전체": f_df = f_df[f_df['학년'] == sel_grade]
+    if sel_class != "전체": f_df = f_df[f_df['반이름'] == sel_class]
+    if search_name: f_df = f_df[f_df['이름'].astype(str).str.contains(search_name, na=False)]
 
     st.divider()
-    st.write(f"검색 결과: {len(filtered_df)} 명")
-    filtered_df.index = range(1, len(filtered_df) + 1)
-    st.dataframe(filtered_df, use_container_width=True)
+    st.write(f"검색 결과: {len(f_df)} 명")
+    f_df.index = range(1, len(f_df) + 1)
+    st.dataframe(f_df, use_container_width=True)
 
 # --- 2. 출석 체크 화면 ---
 elif menu == "출석 체크":
     st.title("✅ 주일 예배 출석 체크")
-    
     if '반이름' in df_students.columns:
         classes = sorted(df_students['반이름'].dropna().unique().tolist())
         sel_class = st.selectbox("반 선택", classes)
-        
         today = datetime.now().date()
         default_sun = today + timedelta(days=(6 - today.weekday()) if today.weekday() != 6 else 0)
         check_date = st.date_input("날짜 선택", default_sun)
 
-        existing_att = df_attendance[(df_attendance['날짜'] == check_date) & (df_attendance['반이름'] == sel_class)]
-        class_sts = df_students[df_students['반이름'] == sel_class]
+        ex_att = df_attendance[(df_attendance['날짜'] == check_date) & (df_attendance['반이름'] == sel_class)]
+        c_sts = df_students[df_students['반이름'] == sel_class]
         
         with st.form("att_form"):
             st.write(f"--- {sel_class} 출석부 ({check_date}) ---")
-            results = []
-            for i, (_, row) in enumerate(class_sts.iterrows(), 1):
+            res = []
+            for i, (_, row) in enumerate(c_sts.iterrows(), 1):
                 is_checked = False
-                existing_note = ""
-                if not existing_att.empty:
-                    match = existing_att[existing_att['이름'] == row['이름']]
+                ex_note = ""
+                if not ex_att.empty:
+                    match = ex_att[ex_att['이름'] == row['이름']]
                     if not match.empty:
                         is_checked = True if match.iloc[0]['출석여부'] == 1 else False
-                        existing_note = match.iloc[0]['비고'] if '비고' in match.columns else ""
+                        ex_note = match.iloc[0]['비고'] if '비고' in match.columns else ""
                 
                 c1, c2 = st.columns([1, 2])
                 with c1:
                     pres = st.checkbox(f"{i}. {row['이름']}", value=is_checked, key=f"att_{row['이름']}")
                 with c2:
-                    note = st.text_input("사유/비고", value=existing_note, key=f"note_{row['이름']}", placeholder="결석 사유 입력")
-                
-                results.append({'날짜': check_date, '이름': row['이름'], '반이름': sel_class, '출석여부': 1 if pres else 0, '비고': note})
+                    note = st.text_input("사유", value=ex_note, key=f"note_{row['이름']}", placeholder="결석 사유 입력")
+                res.append({'날짜': check_date, '이름': row['이름'], '반이름': sel_class, '출석여부': 1 if pres else 0, '비고': note})
             
-            if st.form_submit_button("출석 정보 저장/수정하기"):
-                new_entry_df = pd.DataFrame(results)
-                other_data = df_attendance[~((df_attendance['날짜'] == check_date) & (df_attendance['반이름'] == sel_class))]
-                updated_att = pd.concat([other_data, new_entry_df], ignore_index=True)
-                conn.update(spreadsheet=SHEET_URL, worksheet="attendance", data=updated_att)
-                st.success(f"{check_date} {sel_class} 출석 정보가 성공적으로 업데이트되었습니다!")
+            if st.form_submit_button("출석 저장하기"):
+                new_df = pd.DataFrame(res)
+                other = df_attendance[~((df_attendance['날짜'] == check_date) & (df_attendance['반이름'] == sel_class))]
+                updated = pd.concat([other, new_df], ignore_index=True)
+                conn.update(spreadsheet=SHEET_URL, worksheet="attendance", data=updated)
+                st.success("출석 정보가 반영되었습니다!")
                 st.balloons()
+    else:
+        st.error("반이름 컬럼을 확인하세요.")
 
 # --- 3. 출결 현황 화면 ---
 elif menu == "출결 현황":
-    st.title("📊 출결 현황 및 추이 분석")
-    tab1, tab2 = st.tabs(["일자별 통계", "학생별 누적 현황(추이)"])
-    
+    st.title("📊 출결 현황 분석")
+    tab1, tab2 = st.tabs(["일자별 통계", "학생별 누적 추이"])
     with tab1:
         if not df_attendance.empty:
-            col_f1, col_f2 = st.columns(2)
-            with col_f1:
-                all_dates = sorted(df_attendance['날짜'].unique(), reverse=True)
-                sel_date = st.selectbox("📅 날짜 선택", all_dates, key="date_sel")
-            with col_f2:
-                all_classes = ["전체"] + sorted(df_attendance['반이름'].unique().tolist())
-                sel_class_filter = st.selectbox("🏫 반별 필터", all_classes, key="class_sel")
-            
-            date_df = df_attendance[df_attendance['날짜'] == sel_date].copy()
-            
-            m1, m2, m3 = st.columns(3)
-            m1.metric("대상", f"{len(date_df)}명")
-            m2.metric("출석", f"{len(date_df[date_df['출석여부'] == 1])}명")
-            m3.metric("결석", f"{len(date_df[date_df['출석여부'] == 0])}명")
-            
-            st.subheader("🏫 반별 요약")
-            summary = date_df.groupby('반이름')['출석여부'].agg(['count', 'sum']).reset_index()
-            summary.columns = ['반이름', '대상', '출석']
-            summary['결석'] = summary['대상'] - summary['출석']
-            summary.index = range(1, len(summary) + 1)
-            st.table(summary)
-
-            st.subheader("📄 상세 명단")
-            view_df = date_df.copy()
-            if sel_class_filter != "전체":
-                view_df = view_df[view_df['반이름'] == sel_class_filter]
-            view_df['상태'] = view_df['출석여부'].apply(lambda x: "✅" if x == 1 else "❌")
-            final_view = view_df[['이름', '반이름', '상태', '비고']].sort_values("반이름")
-            final_view.index = range(1, len(final_view) + 1)
-            st.
+            c_f1, c_f2 = st.columns(2)
+            all_dates = sorted(df_attendance['날짜'].

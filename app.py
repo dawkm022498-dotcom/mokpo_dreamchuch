@@ -98,4 +98,43 @@ elif menu == "출석 체크":
                 other_data = df_attendance[~((df_attendance['날짜'] == check_date) & (df_attendance['반이름'] == sel_class))]
                 updated_att = pd.concat([other_data, new_entry_df], ignore_index=True)
                 conn.update(spreadsheet=SHEET_URL, worksheet="attendance", data=updated_att)
-                st.success(f"{check_date} {sel_class} 출
+                st.success(f"{check_date} {sel_class} 출석 정보가 성공적으로 업데이트되었습니다!")
+                st.balloons()
+
+# --- 3. 출결 현황 화면 ---
+elif menu == "출결 현황":
+    st.title("📊 출결 현황 및 추이 분석")
+    tab1, tab2 = st.tabs(["일자별 통계", "학생별 누적 현황(추이)"])
+    
+    with tab1:
+        if not df_attendance.empty:
+            col_f1, col_f2 = st.columns(2)
+            with col_f1:
+                all_dates = sorted(df_attendance['날짜'].unique(), reverse=True)
+                sel_date = st.selectbox("📅 날짜 선택", all_dates, key="date_sel")
+            with col_f2:
+                all_classes = ["전체"] + sorted(df_attendance['반이름'].unique().tolist())
+                sel_class_filter = st.selectbox("🏫 반별 필터", all_classes, key="class_sel")
+            
+            date_df = df_attendance[df_attendance['날짜'] == sel_date].copy()
+            
+            m1, m2, m3 = st.columns(3)
+            m1.metric("대상", f"{len(date_df)}명")
+            m2.metric("출석", f"{len(date_df[date_df['출석여부'] == 1])}명")
+            m3.metric("결석", f"{len(date_df[date_df['출석여부'] == 0])}명")
+            
+            st.subheader("🏫 반별 요약")
+            summary = date_df.groupby('반이름')['출석여부'].agg(['count', 'sum']).reset_index()
+            summary.columns = ['반이름', '대상', '출석']
+            summary['결석'] = summary['대상'] - summary['출석']
+            summary.index = range(1, len(summary) + 1)
+            st.table(summary)
+
+            st.subheader("📄 상세 명단")
+            view_df = date_df.copy()
+            if sel_class_filter != "전체":
+                view_df = view_df[view_df['반이름'] == sel_class_filter]
+            view_df['상태'] = view_df['출석여부'].apply(lambda x: "✅" if x == 1 else "❌")
+            final_view = view_df[['이름', '반이름', '상태', '비고']].sort_values("반이름")
+            final_view.index = range(1, len(final_view) + 1)
+            st.

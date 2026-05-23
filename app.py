@@ -23,13 +23,9 @@ except Exception as e:
     st.error(f"데이터 로드 오류: {e}")
     st.stop()
 
-# --- 2. 메인 화면 상단 메뉴 배치 (글씨 크기 수정) ---
+# --- 2. 메인 화면 상단 메뉴 배치 ---
 st.title("⛪ 목포꿈의교회 학생회 관리")
-
-# [수정] 이동할 메뉴 안내 문구를 제목(###) 수준으로 키우고 이모지를 추가했습니다.
 st.markdown("### 📂 이동할 메뉴를 선택하세요")
-
-# 선택창의 원래 글씨는 숨기고(collapsed), 위에 쓴 큰 글씨가 제목 역할을 하도록 합니다.
 menu = st.selectbox(
     "이동할 메뉴를 선택하세요", 
     ["명단 검색", "출석 체크", "출결 현황", "⚙️ 관리자 도구"],
@@ -77,24 +73,32 @@ elif menu == "출석 체크":
         check_date = st.date_input("날짜", def_sun)
 
         ex_att = df_attendance[(df_attendance['날짜'] == check_date) & (df_attendance['반이름'] == sel_cls)]
-        c_sts = df_students[df_students['반이름'] == sel_cls]
+        
+        # 이름 앞뒤 공백으로 인한 오류 방지를 위해 strip() 처리 및 빈 이름 제외
+        c_sts = df_students[df_students['반이름'] == sel_cls].copy()
+        c_sts = c_sts[c_sts['이름'].get_level_values(0).astype(str).str.strip() != ""]
         
         with st.form("att_form", clear_on_submit=False):
             st.write(f"--- {sel_cls} ({check_date}) ---")
             res = []
             
             for i, (_, row) in enumerate(c_sts.iterrows(), 1):
+                student_name = str(row['이름']).strip() # 이름 앞뒤 공백 제거
+                
                 is_chk, ex_note = False, ""
                 if not ex_att.empty:
-                    m = ex_att[ex_att['이름'] == row['이름']]
+                    m = ex_att[ex_att['이름'].astype(str).str.strip() == student_name]
                     if not m.empty:
                         is_chk = True if m.iloc[0]['출석여부'] == 1 else False
                         ex_note = m.iloc[0]['비고'] if '비고' in m.columns else ""
                 
                 col1, col2 = st.columns([1, 2])
-                p = col1.checkbox(f"{i}. {row['이름']}", value=is_chk, key=f"at_{row['이름']}")
-                n = col2.text_input("사유", value=ex_note, label_visibility="collapsed", key=f"nt_{row['이름']}")
-                res.append({'날짜': check_date, '이름': row['이름'], '반이름': sel_cls, '출석여부': 1 if p else 0, '비고': n})
+                
+                # [핵심 수정] key 뒤에 고유 번호인 __{i} 를 붙여 동명이인이 있어도 절대 충돌하지 않게 만듭니다.
+                p = col1.checkbox(f"{i}. {student_name}", value=is_chk, key=f"at_{student_name}__{i}")
+                n = col2.text_input("사유", value=ex_note, label_visibility="collapsed", key=f"nt_{student_name}__{i}")
+                
+                res.append({'날짜': check_date, '이름': student_name, '반이름': sel_cls, '출석여부': 1 if p else 0, '비고': n})
             
             submit_btn = st.form_submit_button("저장하기")
             

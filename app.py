@@ -47,7 +47,15 @@ if menu == "명단 검색":
 
     st.write(f"결과: {len(f_df)}명")
     f_df.index = range(1, len(f_df) + 1)
-    st.dataframe(f_df, use_container_width=True)
+    
+    # 학년 등 숫자가 들어간 컬럼이 있을 때 소수점이 붙지 않도록 포맷팅 설정 추가
+    st.dataframe(
+        f_df, 
+        use_container_width=True,
+        column_config={
+            c: st.column_config.NumberColumn(format="%d") for c in f_df.columns if f_df[c].dtype in ['int64', 'float64']
+        }
+    )
 
 # --- 4. 출석 체크 ---
 elif menu == "출석 체크":
@@ -101,6 +109,10 @@ elif menu == "출결 현황":
             sm = d_df.groupby('반이름')['출석여부'].agg(['count', 'sum']).reset_index()
             sm.columns = ['반이름', '대상', '출석']
             sm['결석'] = sm['대상'] - sm['출석']
+            
+            # [수정] 반별 요약 데이터가 소수점 없는 깔끔한 정수로 표현되도록 데이터 타입을 강제 변환합니다.
+            sm[['대상', '출석', '결석']] = sm[['대상', '출석', '결석']].astype(int)
+            
             sm.index = range(1, len(sm) + 1)
             st.table(sm)
 
@@ -128,7 +140,15 @@ elif menu == "출결 현황":
             dp = dp[cols].sort_index().reset_index()
             dp.index = range(1, len(dp) + 1)
             dp.index.name = "번호"
-            st.dataframe(dp, use_container_width=True)
+            
+            # [수정] 날짜 컬럼 등 표 내부에 생길 수 있는 모든 숫자 데이터에서 소수점을 완전히 제거하여 출력합니다.
+            st.dataframe(
+                dp, 
+                use_container_width=True,
+                column_config={
+                    c: st.column_config.NumberColumn(format="%d") for c in dp.columns if dp[c].dtype in ['int64', 'float64']
+                }
+            )
         else: st.info("기록 없음")
 
 # --- 6. 관리자 ---

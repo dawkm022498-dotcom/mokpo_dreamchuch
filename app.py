@@ -23,10 +23,28 @@ except Exception as e:
     st.error(f"데이터 로드 오류: {e}")
     st.stop()
 
+# --- [추가] 사이드바 화살표(<<, >>) 옆에 '메뉴' 글자를 고정하는 CSS 스타일 ---
+st.markdown(
+    """
+    <style>
+    /* Streamlit 시스템의 사이드바 접기/펼치기 버튼 뒤에 '메뉴' 글자 강제 삽입 */
+    [data-testid="stSidebarCollapseButton"]::after {
+        content: " 메뉴";
+        font-size: 15px;
+        font-weight: bold;
+        color: #31333F;
+        vertical-align: middle;
+        margin-left: 6px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 # --- 2. 사이드바 ---
 st.sidebar.title("⛪ 메뉴")
-# [수정] 셀렉트박스 자체 레이블에 '이동할 메뉴 선택'을 추가하여 화살표 왼쪽에 글씨가 보이도록 설정
-menu = st.sidebar.selectbox("메뉴 선택", ["명단 검색", "출석 체크", "출결 현황", "⚙️ 관리자 도구"])
+# 원래대로 "이동"으로 복구했습니다.
+menu = st.sidebar.selectbox("이동", ["명단 검색", "출석 체크", "출결 현황", "⚙️ 관리자 도구"])
 
 # --- 3. 명단 검색 ---
 if menu == "명단 검색":
@@ -70,7 +88,6 @@ elif menu == "출석 체크":
         ex_att = df_attendance[(df_attendance['날짜'] == check_date) & (df_attendance['반이름'] == sel_cls)]
         c_sts = df_students[df_students['반이름'] == sel_cls]
         
-        # [수정] st.form 구조와 내부 요소를 완벽하게 격리하여 저장 버튼 오류를 방지합니다.
         with st.form("att_form", clear_on_submit=False):
             st.write(f"--- {sel_cls} ({check_date}) ---")
             res = []
@@ -83,16 +100,13 @@ elif menu == "출석 체크":
                         is_chk = True if m.iloc[0]['출석여부'] == 1 else False
                         ex_note = m.iloc[0]['비고'] if '비고' in m.columns else ""
                 
-                # 폼 내부에서 컬럼 생성이 정상적으로 종속되도록 보장합니다.
                 col1, col2 = st.columns([1, 2])
                 p = col1.checkbox(f"{i}. {row['이름']}", value=is_chk, key=f"at_{row['이름']}")
                 n = col2.text_input("사유", value=ex_note, label_visibility="collapsed", key=f"nt_{row['이름']}")
                 res.append({'날짜': check_date, '이름': row['이름'], '반이름': sel_cls, '출석여부': 1 if p else 0, '비고': n})
             
-            # Form의 마무리는 반드시 이 블록 안에서 버튼으로 끝나야 에러가 나지 않습니다.
             submit_btn = st.form_submit_button("저장하기")
             
-        # 버튼 클릭 시 데이터 업데이트 처리 (Form 밖에서 처리하여 안정성 확보)
         if submit_btn:
             if res:
                 new_df = pd.DataFrame(res)

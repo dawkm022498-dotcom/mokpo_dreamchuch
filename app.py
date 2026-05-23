@@ -25,7 +25,8 @@ except Exception as e:
 
 # --- 2. 사이드바 ---
 st.sidebar.title("⛪ 메뉴")
-menu = st.sidebar.selectbox("이동", ["명단 검색", "출석 체크", "출결 현황", "⚙️ 관리자 도구"])
+# [수정] 셀렉트박스 자체 레이블에 '이동할 메뉴 선택'을 추가하여 화살표 왼쪽에 글씨가 보이도록 설정
+menu = st.sidebar.selectbox("메뉴 선택", ["명단 검색", "출석 체크", "출결 현황", "⚙️ 관리자 도구"])
 
 # --- 3. 명단 검색 ---
 if menu == "명단 검색":
@@ -48,7 +49,6 @@ if menu == "명단 검색":
     st.write(f"결과: {len(f_df)}명")
     f_df.index = range(1, len(f_df) + 1)
     
-    # 학년 등 숫자가 들어간 컬럼이 있을 때 소수점이 붙지 않도록 포맷팅 설정 추가
     st.dataframe(
         f_df, 
         use_container_width=True,
@@ -70,9 +70,11 @@ elif menu == "출석 체크":
         ex_att = df_attendance[(df_attendance['날짜'] == check_date) & (df_attendance['반이름'] == sel_cls)]
         c_sts = df_students[df_students['반이름'] == sel_cls]
         
-        with st.form("att_form"):
+        # [수정] st.form 구조와 내부 요소를 완벽하게 격리하여 저장 버튼 오류를 방지합니다.
+        with st.form("att_form", clear_on_submit=False):
             st.write(f"--- {sel_cls} ({check_date}) ---")
             res = []
+            
             for i, (_, row) in enumerate(c_sts.iterrows(), 1):
                 is_chk, ex_note = False, ""
                 if not ex_att.empty:
@@ -81,19 +83,28 @@ elif menu == "출석 체크":
                         is_chk = True if m.iloc[0]['출석여부'] == 1 else False
                         ex_note = m.iloc[0]['비고'] if '비고' in m.columns else ""
                 
+                # 폼 내부에서 컬럼 생성이 정상적으로 종속되도록 보장합니다.
                 col1, col2 = st.columns([1, 2])
                 p = col1.checkbox(f"{i}. {row['이름']}", value=is_chk, key=f"at_{row['이름']}")
-                n = col2.text_input("사유", value=ex_note, key=f"nt_{row['이름']}")
+                n = col2.text_input("사유", value=ex_note, label_visibility="collapsed", key=f"nt_{row['이름']}")
                 res.append({'날짜': check_date, '이름': row['이름'], '반이름': sel_cls, '출석여부': 1 if p else 0, '비고': n})
             
-            if st.form_submit_button("저장하기"):
+            # Form의 마무리는 반드시 이 블록 안에서 버튼으로 끝나야 에러가 나지 않습니다.
+            submit_btn = st.form_submit_button("저장하기")
+            
+        # 버튼 클릭 시 데이터 업데이트 처리 (Form 밖에서 처리하여 안정성 확보)
+        if submit_btn:
+            if res:
                 new_df = pd.DataFrame(res)
                 other = df_attendance[~((df_attendance['날짜'] == check_date) & (df_attendance['반이름'] == sel_cls))]
                 upd = pd.concat([other, new_df], ignore_index=True)
                 conn.update(spreadsheet=SHEET_URL, worksheet="attendance", data=upd)
-                st.success("저장되었습니다!")
+                st.success("성공적으로 저장되었습니다!")
                 st.balloons()
-    else: st.error("반이름 컬럼 오류")
+            else:
+                st.warning("저장할 데이터가 없습니다.")
+    else: 
+        st.error("반이름 컬럼 오류")
 
 # --- 5. 출결 현황 ---
 elif menu == "출결 현황":
@@ -110,7 +121,6 @@ elif menu == "출결 현황":
             sm.columns = ['반이름', '대상', '출석']
             sm['결석'] = sm['대상'] - sm['출석']
             
-            # [수정] 반별 요약 데이터가 소수점 없는 깔끔한 정수로 표현되도록 데이터 타입을 강제 변환합니다.
             sm[['대상', '출석', '결석']] = sm[['대상', '출석', '결석']].astype(int)
             
             sm.index = range(1, len(sm) + 1)
@@ -141,7 +151,6 @@ elif menu == "출결 현황":
             dp.index = range(1, len(dp) + 1)
             dp.index.name = "번호"
             
-            # [수정] 날짜 컬럼 등 표 내부에 생길 수 있는 모든 숫자 데이터에서 소수점을 완전히 제거하여 출력합니다.
             st.dataframe(
                 dp, 
                 use_container_width=True,

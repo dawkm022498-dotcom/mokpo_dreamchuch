@@ -23,32 +23,15 @@ except Exception as e:
     st.error(f"데이터 로드 오류: {e}")
     st.stop()
 
-# --- [추가] 사이드바 화살표(<<, >>) 옆에 '메뉴' 글자를 고정하는 CSS 스타일 ---
-st.markdown(
-    """
-    <style>
-    /* Streamlit 시스템의 사이드바 접기/펼치기 버튼 뒤에 '메뉴' 글자 강제 삽입 */
-    [data-testid="stSidebarCollapseButton"]::after {
-        content: " 메뉴";
-        font-size: 15px;
-        font-weight: bold;
-        color: #31333F;
-        vertical-align: middle;
-        margin-left: 6px;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
-# --- 2. 사이드바 ---
-st.sidebar.title("⛪ 메뉴")
-# 원래대로 "이동"으로 복구했습니다.
-menu = st.sidebar.selectbox("이동", ["명단 검색", "출석 체크", "출결 현황", "⚙️ 관리자 도구"])
+# --- 2. 메인 화면 상단 메뉴 배치 ---
+# [수정] 사이드바(st.sidebar)를 없애고 메인 화면 맨 위에 타이틀과 메뉴 선택 창을 고정했습니다.
+st.title("⛪ 목포꿈의교회 학생회 관리")
+menu = st.selectbox("이동할 메뉴를 선택하세요", ["명단 검색", "출석 체크", "출결 현황", "⚙️ 관리자 도구"])
+st.write("---") # 메뉴 창과 본문 사이에 구분선 추가
 
 # --- 3. 명단 검색 ---
 if menu == "명단 검색":
-    st.title("🔍 학생 명단 검색")
+    st.subheader("🔍 학생 명단 검색")
     c1, c2, c3, c4 = st.columns(4)
     schools = ["전체"] + sorted(df_students['학교'].dropna().unique().tolist())
     sel_school = c1.selectbox("학교", schools)
@@ -77,7 +60,7 @@ if menu == "명단 검색":
 
 # --- 4. 출석 체크 ---
 elif menu == "출석 체크":
-    st.title("✅ 주일 출석 체크")
+    st.subheader("✅ 주일 출석 체크")
     if '반이름' in df_students.columns:
         cls_list = sorted(df_students['반이름'].dropna().unique().tolist())
         sel_cls = st.selectbox("반 선택", cls_list)
@@ -122,7 +105,7 @@ elif menu == "출석 체크":
 
 # --- 5. 출결 현황 ---
 elif menu == "출결 현황":
-    st.title("📊 출결 분석")
+    st.subheader("📊 출결 분석")
     t1, t2 = st.tabs(["일자별 통계", "학생별 누적 추이"])
     with t1:
         if not df_attendance.empty:
@@ -176,7 +159,7 @@ elif menu == "출결 현황":
 
 # --- 6. 관리자 ---
 elif menu == "⚙️ 관리자 도구":
-    st.title("⚙️ 관리자")
+    st.subheader("⚙️ 관리자")
     pw = st.text_input("비밀번호", type="password")
     if pw == "0498":
         st.success("인증 성공")

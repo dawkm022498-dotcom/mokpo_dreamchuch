@@ -74,9 +74,12 @@ elif menu == "출석 체크":
 
         ex_att = df_attendance[(df_attendance['날짜'] == check_date) & (df_attendance['반이름'] == sel_cls)]
         
-        # 이름 앞뒤 공백으로 인한 오류 방지를 위해 strip() 처리 및 빈 이름 제외
+        # 선택한 반의 학생 명단만 가져오기
         c_sts = df_students[df_students['반이름'] == sel_cls].copy()
-        c_sts = c_sts[c_sts['이름'].get_level_values(0).astype(str).str.strip() != ""]
+        
+        # [해결 완료] 에러가 났던 get_level_values를 제거하고, 일반 단일 컬럼에 맞는 안전한 방식으로 빈 값 유저를 필터링합니다.
+        c_sts = c_sts[c_sts['이름'].astype(str).str.strip() != ""]
+        c_sts = c_sts.dropna(subset=['이름']) # 혹시 모를 누락된(NaN) 이름도 함께 제외
         
         with st.form("att_form", clear_on_submit=False):
             st.write(f"--- {sel_cls} ({check_date}) ---")
@@ -94,7 +97,7 @@ elif menu == "출석 체크":
                 
                 col1, col2 = st.columns([1, 2])
                 
-                # [핵심 수정] key 뒤에 고유 번호인 __{i} 를 붙여 동명이인이 있어도 절대 충돌하지 않게 만듭니다.
+                # key 뒤에 고유 번호인 __{i} 를 붙여 동명이인이 있어도 절대 충돌하지 않게 만듭니다.
                 p = col1.checkbox(f"{i}. {student_name}", value=is_chk, key=f"at_{student_name}__{i}")
                 n = col2.text_input("사유", value=ex_note, label_visibility="collapsed", key=f"nt_{student_name}__{i}")
                 

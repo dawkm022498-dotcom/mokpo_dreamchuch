@@ -14,7 +14,8 @@ def load_data():
     df_s.columns = [c.strip() for c in df_s.columns]
     df_a.columns = [c.strip() for c in df_a.columns]
     if not df_a.empty:
-        df_a['날짜'] = pd.to_datetime(df_a['날짜']).dt.date
+        # errors='coerce'를 주어 잘못된 날짜 형식이나 빈 칸을 NaT(빈값)로 안전하게 변환합니다.
+        df_a['날짜'] = pd.to_datetime(df_a['날짜'], errors='coerce').dt.date
     return df_s, df_a
 
 try:
@@ -72,21 +73,20 @@ elif menu == "출석 체크":
         def_sun = today + timedelta(days=(6-today.weekday()) if today.weekday() != 6 else 0)
         check_date = st.date_input("날짜", def_sun)
 
-        ex_att = df_attendance[(df_attendance['날짜'] == check_date) & (df_attendance['반이름'] == sel_cls)]
+        # 날짜 비교 시 빈 값(NaT)은 제외하고 비교하도록 안전장치 추가
+        df_a_filtered = df_attendance[df_attendance['날짜'].notna()]
+        ex_att = df_a_filtered[(df_a_filtered['날짜'] == check_date) & (df_a_filtered['반이름'] == sel_cls)]
         
-        # 선택한 반의 학생 명단만 가져오기
         c_sts = df_students[df_students['반이름'] == sel_cls].copy()
-        
-        # [해결 완료] 에러가 났던 get_level_values를 제거하고, 일반 단일 컬럼에 맞는 안전한 방식으로 빈 값 유저를 필터링합니다.
         c_sts = c_sts[c_sts['이름'].astype(str).str.strip() != ""]
-        c_sts = c_sts.dropna(subset=['이름']) # 혹시 모를 누락된(NaN) 이름도 함께 제외
+        c_sts = c_sts.dropna(subset=['이름'])
         
         with st.form("att_form", clear_on_submit=False):
             st.write(f"--- {sel_cls} ({check_date}) ---")
             res = []
             
             for i, (_, row) in enumerate(c_sts.iterrows(), 1):
-                student_name = str(row['이름']).strip() # 이름 앞뒤 공백 제거
+                student_name = str(row['이름']).strip()
                 
                 is_chk, ex_note = False, ""
                 if not ex_att.empty:
@@ -96,8 +96,6 @@ elif menu == "출석 체크":
                         ex_note = m.iloc[0]['비고'] if '비고' in m.columns else ""
                 
                 col1, col2 = st.columns([1, 2])
-                
-                # key 뒤에 고유 번호인 __{i} 를 붙여 동명이인이 있어도 절대 충돌하지 않게 만듭니다.
                 p = col1.checkbox(f"{i}. {student_name}", value=is_chk, key=f"at_{student_name}__{i}")
                 n = col2.text_input("사유", value=ex_note, label_visibility="collapsed", key=f"nt_{student_name}__{i}")
                 
@@ -108,7 +106,8 @@ elif menu == "출석 체크":
         if submit_btn:
             if res:
                 new_df = pd.DataFrame(res)
-                other = df_attendance[~((df_attendance['날짜'] == check_date) & (df_attendance['반이름'] == sel_cls))]
+                df_a_filtered_other = df_attendance[df_attendance['날짜'].notna()]
+                other = df_a_filtered_other[~((df_a_filtered_other['날짜'] == check_date) & (df_a_filtered_other['반이름'] == sel_cls))]
                 upd = pd.concat([other, new_df], ignore_index=True)
                 conn.update(spreadsheet=SHEET_URL, worksheet="attendance", data=upd)
                 st.success("성공적으로 저장되었습니다!")
@@ -124,52 +123,64 @@ elif menu == "출결 현황":
     t1, t2 = st.tabs(["일자별 통계", "학생별 누적 추이"])
     with t1:
         if not df_attendance.empty:
-            dates = sorted(df_attendance['날짜'].unique(), reverse=True)
-            s_date = st.selectbox("날짜 선택", dates)
-            d_df = df_attendance[df_attendance['날짜'] == s_date].copy()
+            # 날짜 컬럼에서 빈 값(NaT/NaN)을 완벽히 지운 뒤 정상적인 날짜만 정렬합니다.
+            pure_dates = df_attendance['날짜'].dropna()
+            dates = sorted(pure_dates.unique(), reverse=True)
             
-            st.subheader("🏫 반별 요약")
-            sm = d_df.groupby('반이름')['출석여부'].agg(['count', 'sum']).reset_index()
-            sm.columns = ['반이름', '대상', '출석']
-            sm['결석'] = sm['대상'] - sm['출석']
-            
-            sm[['대상', '출석', '결석']] = sm[['대상', '출석', '결석']].astype(int)
-            
-            sm.index = range(1, len(sm) + 1)
-            st.table(sm)
+            if dates:
+                s_date = st.selectbox("날짜 선택", dates)
+                d_df = df_attendance[df_attendance['날짜'] == s_date].copy()
+                
+                st.subheader("🏫 반별 요약")
+                sm = d_df.groupby('반이름')['출석여부'].agg(['count', 'sum']).reset_index()
+                sm.columns = ['반이름', '대상', '출석']
+                sm['결석'] = sm['대상'] - sm['출석']
+                
+                sm[['대상', '출석', '결석']] = sm[['대상', '출석', '결석']].astype(int)
+                
+                sm.index = range(1, len(sm) + 1)
+                st.table(sm)
 
-            d_df['상태'] = d_df['출석여부'].apply(lambda x: "✅" if x == 1 else "❌")
-            v_df = d_df[['이름', '반이름', '상태', '비고']].sort_values("반이름")
-            v_df.index = range(1, len(v_df) + 1)
-            st.dataframe(v_df, use_container_width=True)
+                d_df['상태'] = d_df['출석여부'].apply(lambda x: "✅" if x == 1 else "❌")
+                v_df = d_df[['이름', '반이름', '상태', '비고']].sort_values("반이름")
+                v_df.index = range(1, len(v_df) + 1)
+                st.dataframe(v_df, use_container_width=True)
+            else:
+                st.info("기록된 올바른 날짜 데이터가 없습니다.")
         else: st.info("기록 없음")
 
     with t2:
         st.subheader("📅 학생별 출결 추이")
         if not df_attendance.empty:
-            pv = df_attendance.pivot_table(index=['반이름', '이름'], columns='날짜', values='출석여부')
-            def check_l(r):
-                cnt = 0
-                for v in r.dropna():
-                    if v == 0:
-                        cnt += 1
-                        if cnt >= 5: return "⚠️ 장기결석"
-                    else: cnt = 0
-                return ""
-            pv['관리상태'] = pv.apply(check_l, axis=1)
-            dp = pv.replace({1: "출석", 0: "결석"})
-            cols = ['관리상태'] + [c for c in dp.columns if c != '관리상태']
-            dp = dp[cols].sort_index().reset_index()
-            dp.index = range(1, len(dp) + 1)
-            dp.index.name = "번호"
+            # 추이 분석에서도 날짜 빈 값을 제외한 상태에서 피벗 테이블을 만듭니다.
+            df_a_pure = df_attendance[df_attendance['날짜'].notna()]
             
-            st.dataframe(
-                dp, 
-                use_container_width=True,
-                column_config={
-                    c: st.column_config.NumberColumn(format="%d") for c in dp.columns if dp[c].dtype in ['int64', 'float64']
-                }
-            )
+            if not df_a_pure.empty:
+                pv = df_a_pure.pivot_table(index=['반이름', '이름'], columns='날짜', values='출석여부')
+                def check_l(r):
+                    cnt = 0
+                    for v in r.dropna():
+                        if v == 0:
+                            cnt += 1
+                            if cnt >= 5: return "⚠️ 장기결석"
+                        else: cnt = 0
+                    return ""
+                pv['관리상태'] = pv.apply(check_l, axis=1)
+                dp = pv.replace({1: "출석", 0: "결석"})
+                cols = ['관리상태'] + [c for c in dp.columns if c != '관리상태']
+                dp = dp[cols].sort_index().reset_index()
+                dp.index = range(1, len(dp) + 1)
+                dp.index.name = "번호"
+                
+                st.dataframe(
+                    dp, 
+                    use_container_width=True,
+                    column_config={
+                        c: st.column_config.NumberColumn(format="%d") for c in dp.columns if dp[c].dtype in ['int64', 'float64']
+                    }
+                )
+            else:
+                st.info("기록 없음")
         else: st.info("기록 없음")
 
 # --- 6. 관리자 ---

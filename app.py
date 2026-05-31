@@ -14,7 +14,6 @@ def load_data():
     df_s.columns = [c.strip() for c in df_s.columns]
     df_a.columns = [c.strip() for c in df_a.columns]
     if not df_a.empty:
-        # errors='coerce'를 주어 잘못된 날짜 형식이나 빈 칸을 NaT(빈값)로 안전하게 변환합니다.
         df_a['날짜'] = pd.to_datetime(df_a['날짜'], errors='coerce').dt.date
     return df_s, df_a
 
@@ -73,7 +72,6 @@ elif menu == "출석 체크":
         def_sun = today + timedelta(days=(6-today.weekday()) if today.weekday() != 6 else 0)
         check_date = st.date_input("날짜", def_sun)
 
-        # 날짜 비교 시 빈 값(NaT)은 제외하고 비교하도록 안전장치 추가
         df_a_filtered = df_attendance[df_attendance['날짜'].notna()]
         ex_att = df_a_filtered[(df_a_filtered['날짜'] == check_date) & (df_a_filtered['반이름'] == sel_cls)]
         
@@ -123,7 +121,6 @@ elif menu == "출결 현황":
     t1, t2 = st.tabs(["일자별 통계", "학생별 누적 추이"])
     with t1:
         if not df_attendance.empty:
-            # 날짜 컬럼에서 빈 값(NaT/NaN)을 완벽히 지운 뒤 정상적인 날짜만 정렬합니다.
             pure_dates = df_attendance['날짜'].dropna()
             dates = sorted(pure_dates.unique(), reverse=True)
             
@@ -135,16 +132,41 @@ elif menu == "출결 현황":
                 sm = d_df.groupby('반이름')['출석여부'].agg(['count', 'sum']).reset_index()
                 sm.columns = ['반이름', '대상', '출석']
                 sm['결석'] = sm['대상'] - sm['출석']
-                
                 sm[['대상', '출석', '결석']] = sm[['대상', '출석', '결석']].astype(int)
-                
                 sm.index = range(1, len(sm) + 1)
                 st.table(sm)
 
-                d_df['상태'] = d_df['출석여부'].apply(lambda x: "✅" if x == 1 else "❌")
-                v_df = d_df[['이름', '반이름', '상태', '비고']].sort_values("반이름")
-                v_df.index = range(1, len(v_df) + 1)
-                st.dataframe(v_df, use_container_width=True)
+                # [추가 및 수정] 일자별 출석자 / 결석자 명단 좌우 분리 레이아웃
+                st.write("---")
+                st.subheader(f"👥 명단 상세 보기 ({s_date})")
+                
+                # 출석자와 결석자 데이터 분리
+                present_df = d_df[d_df['출석여부'] == 1].sort_values(by=['반이름', '이름'])
+                absent_df = d_df[d_df['출석여부'] == 0].sort_values(by=['반이름', '이름'])
+                
+                col_left, col_right = st.columns(2)
+                
+                with col_left:
+                    st.markdown(f"### ✅ 출석 명단 ({len(present_df)}명)")
+                    if not present_df.empty:
+                        # 보기 좋게 반이름과 이름, 비고를 결합하여 데이터프레임 구성
+                        p_display = present_df[['반이름', '이름', '비고']].copy()
+                        p_display.insert(0, '상태', '✅')
+                        p_display.index = range(1, len(p_display) + 1)
+                        st.dataframe(p_display, use_container_width=True)
+                    else:
+                        st.info("출석자가 없습니다.")
+                        
+                with col_right:
+                    st.markdown(f"### ❌ 결석 명단 ({len(absent_df)}명)")
+                    if not absent_df.empty:
+                        a_display = absent_df[['반이름', '이름', '비고']].copy()
+                        a_display.insert(0, '상태', '❌')
+                        a_display.index = range(1, len(a_display) + 1)
+                        st.dataframe(a_display, use_container_width=True)
+                    else:
+                        st.info("결석자가 없습니다.")
+                        
             else:
                 st.info("기록된 올바른 날짜 데이터가 없습니다.")
         else: st.info("기록 없음")
@@ -152,7 +174,6 @@ elif menu == "출결 현황":
     with t2:
         st.subheader("📅 학생별 출결 추이")
         if not df_attendance.empty:
-            # 추이 분석에서도 날짜 빈 값을 제외한 상태에서 피벗 테이블을 만듭니다.
             df_a_pure = df_attendance[df_attendance['날짜'].notna()]
             
             if not df_a_pure.empty:

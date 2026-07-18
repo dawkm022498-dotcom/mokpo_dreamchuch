@@ -74,14 +74,8 @@ elif menu == "출석 체크":
                         ex_note = m.iloc[0]['비고'] if '비고' in m.columns else ""
                 
                 col1, col2 = st.columns([1, 2])
-                
-                # 중복 방지를 위한 고유 키값 생성 (이름 + 학교 + 학년)
-                sch = str(row['학교']) if '학교' in row else ""
-                grd = str(row['학년']) if '학년' in row else ""
-                unique_key = f"{row['이름']}_{sch}_{grd}_{i}"
-                
-                p = col1.checkbox(f"{i}. {row['이름']}", value=is_chk, key=f"at_{unique_key}")
-                n = col2.text_input("사유", value=ex_note, key=f"nt_{unique_key}")
+                p = col1.checkbox(f"{i}. {row['이름']}", value=is_chk, key=f"at_{row['이름']}")
+                n = col2.text_input("사유", value=ex_note, key=f"nt_{row['이름']}")
                 res.append({'날짜': check_date, '이름': row['이름'], '반이름': sel_cls, '출석여부': 1 if p else 0, '비고': n})
             
             if st.form_submit_button("저장하기"):

@@ -14,7 +14,7 @@ def load_data():
     df_s.columns = [c.strip() for c in df_s.columns]
     df_a.columns = [c.strip() for c in df_a.columns]
     if not df_a.empty:
-        df_a['날짜'] = pd.to_datetime(df_a['날짜']).dt.date
+        df_a['날짜'] = pd.to_datetime(df_a['날짜'], errors='coerce').dt.date
     return df_s, df_a
 
 try:
@@ -23,13 +23,19 @@ except Exception as e:
     st.error(f"데이터 로드 오류: {e}")
     st.stop()
 
-# --- 2. 사이드바 ---
-st.sidebar.title("⛪ 메뉴")
-menu = st.sidebar.selectbox("이동", ["명단 검색", "출석 체크", "출결 현황", "⚙️ 관리자 도구"])
+# --- 2. 메인 화면 상단 메뉴 배치 ---
+st.title("⛪ 목포꿈의교회 학생회 관리")
+st.markdown("### 📂 이동할 메뉴를 선택하세요")
+menu = st.selectbox(
+    "이동할 메뉴를 선택하세요", 
+    ["명단 검색", "출석 체크", "출결 현황", "⚙️ 관리자 도구"],
+    label_visibility="collapsed" 
+)
+st.write("---") 
 
 # --- 3. 명단 검색 ---
 if menu == "명단 검색":
-    st.title("🔍 학생 명단 검색")
+    st.subheader("🔍 학생 명단 검색")
     c1, c2, c3, c4 = st.columns(4)
     schools = ["전체"] + sorted(df_students['학교'].dropna().unique().tolist())
     sel_school = c1.selectbox("학교", schools)
@@ -47,11 +53,18 @@ if menu == "명단 검색":
 
     st.write(f"결과: {len(f_df)}명")
     f_df.index = range(1, len(f_df) + 1)
-    st.dataframe(f_df, use_container_width=True)
+    
+    st.dataframe(
+        f_df, 
+        use_container_width=True,
+        column_config={
+            c: st.column_config.NumberColumn(format="%d") for c in f_df.columns if f_df[c].dtype in ['int64', 'float64']
+        }
+    )
 
 # --- 4. 출석 체크 ---
 elif menu == "출석 체크":
-    st.title("✅ 주일 출석 체크")
+    st.subheader("✅ 주일 출석 체크")
     if '반이름' in df_students.columns:
         cls_list = sorted(df_students['반이름'].dropna().unique().tolist())
         sel_cls = st.selectbox("반 선택", cls_list)
@@ -59,81 +72,141 @@ elif menu == "출석 체크":
         def_sun = today + timedelta(days=(6-today.weekday()) if today.weekday() != 6 else 0)
         check_date = st.date_input("날짜", def_sun)
 
-        ex_att = df_attendance[(df_attendance['날짜'] == check_date) & (df_attendance['반이름'] == sel_cls)]
-        c_sts = df_students[df_students['반이름'] == sel_cls]
+        df_a_filtered = df_attendance[df_attendance['날짜'].notna()]
+        ex_att = df_a_filtered[(df_a_filtered['날짜'] == check_date) & (df_a_filtered['반이름'] == sel_cls)]
         
-        with st.form("att_form"):
+        c_sts = df_students[df_students['반이름'] == sel_cls].copy()
+        c_sts = c_sts[c_sts['이름'].astype(str).str.strip() != ""]
+        c_sts = c_sts.dropna(subset=['이름'])
+        
+        with st.form("att_form", clear_on_submit=False):
             st.write(f"--- {sel_cls} ({check_date}) ---")
             res = []
+            
             for i, (_, row) in enumerate(c_sts.iterrows(), 1):
+                student_name = str(row['이름']).strip()
+                
                 is_chk, ex_note = False, ""
                 if not ex_att.empty:
-                    m = ex_att[ex_att['이름'] == row['이름']]
+                    m = ex_att[ex_att['이름'].astype(str).str.strip() == student_name]
                     if not m.empty:
                         is_chk = True if m.iloc[0]['출석여부'] == 1 else False
                         ex_note = m.iloc[0]['비고'] if '비고' in m.columns else ""
                 
                 col1, col2 = st.columns([1, 2])
-                p = col1.checkbox(f"{i}. {row['이름']}", value=is_chk, key=f"at_{row['이름']}")
-                n = col2.text_input("사유", value=ex_note, key=f"nt_{row['이름']}")
-                res.append({'날짜': check_date, '이름': row['이름'], '반이름': sel_cls, '출석여부': 1 if p else 0, '비고': n})
+                p = col1.checkbox(f"{i}. {student_name}", value=is_chk, key=f"at_{student_name}__{i}")
+                n = col2.text_input("사유", value=ex_note, label_visibility="collapsed", key=f"nt_{student_name}__{i}")
+                
+                res.append({'날짜': check_date, '이름': student_name, '반이름': sel_cls, '출석여부': 1 if p else 0, '비고': n})
             
-            if st.form_submit_button("저장하기"):
+            submit_btn = st.form_submit_button("저장하기")
+            
+        if submit_btn:
+            if res:
                 new_df = pd.DataFrame(res)
-                other = df_attendance[~((df_attendance['날짜'] == check_date) & (df_attendance['반이름'] == sel_cls))]
+                df_a_filtered_other = df_attendance[df_attendance['날짜'].notna()]
+                other = df_a_filtered_other[~((df_a_filtered_other['날짜'] == check_date) & (df_a_filtered_other['반이름'] == sel_cls))]
                 upd = pd.concat([other, new_df], ignore_index=True)
                 conn.update(spreadsheet=SHEET_URL, worksheet="attendance", data=upd)
-                st.success("저장되었습니다!")
+                st.success("성공적으로 저장되었습니다!")
                 st.balloons()
-    else: st.error("반이름 컬럼 오류")
+            else:
+                st.warning("저장할 데이터가 없습니다.")
+    else: 
+        st.error("반이름 컬럼 오류")
 
 # --- 5. 출결 현황 ---
 elif menu == "출결 현황":
-    st.title("📊 출결 분석")
+    st.subheader("📊 출결 분석")
     t1, t2 = st.tabs(["일자별 통계", "학생별 누적 추이"])
     with t1:
         if not df_attendance.empty:
-            dates = sorted(df_attendance['날짜'].unique(), reverse=True)
-            s_date = st.selectbox("날짜 선택", dates)
-            d_df = df_attendance[df_attendance['날짜'] == s_date].copy()
+            pure_dates = df_attendance['날짜'].dropna()
+            dates = sorted(pure_dates.unique(), reverse=True)
             
-            st.subheader("🏫 반별 요약")
-            sm = d_df.groupby('반이름')['출석여부'].agg(['count', 'sum']).reset_index()
-            sm.columns = ['반이름', '대상', '출석']
-            sm['결석'] = sm['대상'] - sm['출석']
-            sm.index = range(1, len(sm) + 1)
-            st.table(sm)
+            if dates:
+                s_date = st.selectbox("날짜 선택", dates)
+                d_df = df_attendance[df_attendance['날짜'] == s_date].copy()
+                
+                st.subheader("🏫 반별 요약")
+                sm = d_df.groupby('반이름')['출석여부'].agg(['count', 'sum']).reset_index()
+                sm.columns = ['반이름', '대상', '출석']
+                sm['결석'] = sm['대상'] - sm['출석']
+                sm[['대상', '출석', '결석']] = sm[['대상', '출석', '결석']].astype(int)
+                sm.index = range(1, len(sm) + 1)
+                st.table(sm)
 
-            d_df['상태'] = d_df['출석여부'].apply(lambda x: "✅" if x == 1 else "❌")
-            v_df = d_df[['이름', '반이름', '상태', '비고']].sort_values("반이름")
-            v_df.index = range(1, len(v_df) + 1)
-            st.dataframe(v_df, use_container_width=True)
+                # [추가 및 수정] 일자별 출석자 / 결석자 명단 좌우 분리 레이아웃
+                st.write("---")
+                st.subheader(f"👥 명단 상세 보기 ({s_date})")
+                
+                # 출석자와 결석자 데이터 분리
+                present_df = d_df[d_df['출석여부'] == 1].sort_values(by=['반이름', '이름'])
+                absent_df = d_df[d_df['출석여부'] == 0].sort_values(by=['반이름', '이름'])
+                
+                col_left, col_right = st.columns(2)
+                
+                with col_left:
+                    st.markdown(f"### ✅ 출석 명단 ({len(present_df)}명)")
+                    if not present_df.empty:
+                        # 보기 좋게 반이름과 이름, 비고를 결합하여 데이터프레임 구성
+                        p_display = present_df[['반이름', '이름', '비고']].copy()
+                        p_display.insert(0, '상태', '✅')
+                        p_display.index = range(1, len(p_display) + 1)
+                        st.dataframe(p_display, use_container_width=True)
+                    else:
+                        st.info("출석자가 없습니다.")
+                        
+                with col_right:
+                    st.markdown(f"### ❌ 결석 명단 ({len(absent_df)}명)")
+                    if not absent_df.empty:
+                        a_display = absent_df[['반이름', '이름', '비고']].copy()
+                        a_display.insert(0, '상태', '❌')
+                        a_display.index = range(1, len(a_display) + 1)
+                        st.dataframe(a_display, use_container_width=True)
+                    else:
+                        st.info("결석자가 없습니다.")
+                        
+            else:
+                st.info("기록된 올바른 날짜 데이터가 없습니다.")
         else: st.info("기록 없음")
 
     with t2:
         st.subheader("📅 학생별 출결 추이")
         if not df_attendance.empty:
-            pv = df_attendance.pivot_table(index=['반이름', '이름'], columns='날짜', values='출석여부')
-            def check_l(r):
-                cnt = 0
-                for v in r.dropna():
-                    if v == 0:
-                        cnt += 1
-                        if cnt >= 5: return "⚠️ 장기결석"
-                    else: cnt = 0
-                return ""
-            pv['관리상태'] = pv.apply(check_l, axis=1)
-            dp = pv.replace({1: "출석", 0: "결석"})
-            cols = ['관리상태'] + [c for c in dp.columns if c != '관리상태']
-            dp = dp[cols].sort_index().reset_index()
-            dp.index = range(1, len(dp) + 1)
-            dp.index.name = "번호"
-            st.dataframe(dp, use_container_width=True)
+            df_a_pure = df_attendance[df_attendance['날짜'].notna()]
+            
+            if not df_a_pure.empty:
+                pv = df_a_pure.pivot_table(index=['반이름', '이름'], columns='날짜', values='출석여부')
+                def check_l(r):
+                    cnt = 0
+                    for v in r.dropna():
+                        if v == 0:
+                            cnt += 1
+                            if cnt >= 5: return "⚠️ 장기결석"
+                        else: cnt = 0
+                    return ""
+                pv['관리상태'] = pv.apply(check_l, axis=1)
+                dp = pv.replace({1: "출석", 0: "결석"})
+                cols = ['관리상태'] + [c for c in dp.columns if c != '관리상태']
+                dp = dp[cols].sort_index().reset_index()
+                dp.index = range(1, len(dp) + 1)
+                dp.index.name = "번호"
+                
+                st.dataframe(
+                    dp, 
+                    use_container_width=True,
+                    column_config={
+                        c: st.column_config.NumberColumn(format="%d") for c in dp.columns if dp[c].dtype in ['int64', 'float64']
+                    }
+                )
+            else:
+                st.info("기록 없음")
         else: st.info("기록 없음")
 
 # --- 6. 관리자 ---
 elif menu == "⚙️ 관리자 도구":
-    st.title("⚙️ 관리자")
+    st.subheader("⚙️ 관리자")
     pw = st.text_input("비밀번호", type="password")
     if pw == "0498":
         st.success("인증 성공")
